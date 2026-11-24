@@ -87,13 +87,14 @@
           class="text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:border-emerald-500 max-w-[175px]">
           <option value="auto">Auto (erkennen)</option>
           <option value="obst_gemuese">1. Obst &amp; Gemüse</option>
-          <option value="kuehlung">2. Kühlung &amp; Molkerei</option>
-          <option value="backwaren">3. Brot &amp; Backwaren</option>
-          <option value="vorrat">4. Vorrat &amp; Konserven</option>
-          <option value="getraenke">5. Getränke</option>
-          <option value="tiefkuehl">6. Tiefkühlkost</option>
-          <option value="drogerie">7. Drogerie &amp; Haushalt</option>
-          <option value="sonstiges">8. Sonstiges</option>
+          <option value="brot_beilagen">2. Brot &amp; Beilagen</option>
+          <option value="fleisch">3. Fleisch</option>
+          <option value="molkerei_kuehlung">4. Molkerei &amp; Kühlung</option>
+          <option value="konserven_gewuerze">5. Konserven &amp; Gewürze</option>
+          <option value="drogerie_haushalt">6. Drogerie &amp; Haushalt</option>
+          <option value="getraenke">7. Getränke</option>
+          <option value="tiefkuehlung">8. Tiefkühlung</option>
+          <option value="sonstiges">9. Sonstiges</option>
         </select>
       </div>
     </form>
@@ -156,13 +157,14 @@
           <select id="editCategorySelect" tabindex="-1"
             class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-medium bg-white">
             <option value="obst_gemuese">1. Obst &amp; Gemüse</option>
-            <option value="kuehlung">2. Kühlung &amp; Molkerei</option>
-            <option value="backwaren">3. Brot &amp; Backwaren</option>
-            <option value="vorrat">4. Vorrat &amp; Konserven</option>
-            <option value="getraenke">5. Getränke</option>
-            <option value="tiefkuehl">6. Tiefkühlkost</option>
-            <option value="drogerie">7. Drogerie &amp; Haushalt</option>
-            <option value="sonstiges">8. Sonstiges</option>
+            <option value="brot_beilagen">2. Brot &amp; Beilagen</option>
+            <option value="fleisch">3. Fleisch</option>
+            <option value="molkerei_kuehlung">4. Molkerei &amp; Kühlung</option>
+            <option value="konserven_gewuerze">5. Konserven &amp; Gewürze</option>
+            <option value="drogerie_haushalt">6. Drogerie &amp; Haushalt</option>
+            <option value="getraenke">7. Getränke</option>
+            <option value="tiefkuehlung">8. Tiefkühlung</option>
+            <option value="sonstiges">9. Sonstiges</option>
           </select>
         </div>
       </div>
@@ -327,24 +329,42 @@
     import { getDatabase, ref, onValue, set, off } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
     const CATEGORIES = [
-      { id: "obst_gemuese", label: "1. Obst & Gemüse", icon: "apple", color: "text-emerald-600 bg-emerald-50" },
-      { id: "kuehlung",     label: "2. Kühlung & Molkerei", icon: "milk", color: "text-sky-600 bg-sky-50" },
-      { id: "backwaren",    label: "3. Brot & Backwaren", icon: "croissant", color: "text-amber-600 bg-amber-50" },
-      { id: "vorrat",       label: "4. Vorrat & Konserven", icon: "package", color: "text-orange-600 bg-orange-50" },
-      { id: "getraenke",    label: "5. Getränke", icon: "cup-soda", color: "text-blue-600 bg-blue-50" },
-      { id: "tiefkuehl",    label: "6. Tiefkühlkost", icon: "snowflake", color: "text-cyan-600 bg-cyan-50" },
-      { id: "drogerie",     label: "7. Drogerie & Haushalt", icon: "sparkles", color: "text-purple-600 bg-purple-50" },
-      { id: "sonstiges",    label: "8. Sonstiges", icon: "tag", color: "text-slate-600 bg-slate-100" }
+      { id: "obst_gemuese",      label: "1. Obst & Gemüse",      icon: "apple",       color: "text-emerald-600 bg-emerald-50" },
+      { id: "brot_beilagen",     label: "2. Brot & Beilagen",     icon: "croissant",   color: "text-amber-600 bg-amber-50" },
+      { id: "fleisch",           label: "3. Fleisch",             icon: "beef",        color: "text-rose-600 bg-rose-50" },
+      { id: "molkerei_kuehlung", label: "4. Molkerei & Kühlung",  icon: "milk",        color: "text-sky-600 bg-sky-50" },
+      { id: "konserven_gewuerze",label: "5. Konserven & Gewürze",icon: "package",     color: "text-orange-600 bg-orange-50" },
+      { id: "drogerie_haushalt", label: "6. Drogerie & Haushalt", icon: "sparkles",    color: "text-purple-600 bg-purple-50" },
+      { id: "getraenke",         label: "7. Getränke",            icon: "cup-soda",    color: "text-blue-600 bg-blue-50" },
+      { id: "tiefkuehlung",      label: "8. Tiefkühlung",         icon: "snowflake",   color: "text-cyan-600 bg-cyan-50" },
+      { id: "sonstiges",         label: "9. Sonstiges",           icon: "tag",         color: "text-slate-600 bg-slate-100" }
     ];
 
     const KEYWORDS = {
-      obst_gemuese: ["apfel","äpfel","banane","birne","traube","erdbeer","himbeer","blaubeer","heidelbeer","orange","mandarine","zitrone","limette","kiwi","mango","ananas","melone","pfirsich","nektarine","pflaume","kirsch","avocado","tomate","gurke","paprika","karotte","möhre","kartoffel","zwiebel","knoblauch","salat","rucola","spinat","brokkoli","blumenkohl","zucchini","aubergine","pilz","champignon","lauch","porree","sellerie","radieschen","ingwer","kräuter","basilikum","petersilie","schnittlauch","obst","gemüse"],
-      kuehlung: ["milch","hafermilch","sojamilch","mandelmilch","butter","margarine","käse","gouda","emmentaler","mozzarella","parmesan","frischkäse","quark","joghurt","skyr","sahne","schmand","crème fraîche","ei","eier","wurst","schinken","salami","speck","fleisch","hähnchen","pute","hackfleisch","lachs","fisch","tofu","hummus","pesto","hefe","blätterteig"],
-      backwaren: ["brot","brötchen","toast","baguette","croissant","brezel","laugen","kuchen","muffin","keks","zwieback","knäckebrot","tortilla","wrap"],
-      vorrat: ["nudel","pasta","spaghetti","penne","reis","mehl","zucker","salz","pfeffer","gewürz","öl","olivenöl","essig","senf","ketchup","mayo","soße","passierte tomaten","dosentomaten","mais","bohnen","linsen","kichererbsen","thunfisch","müsli","haferflocken","cornflakes","marmelade","honig","nutella","schokolade","chips","nüsse","mandeln","kaffee","tee","kakao","brühe"],
-      getraenke: ["wasser","sprudel","mineralwasser","saft","apfelsaft","orangensaft","cola","fanta","sprite","limo","eistee","bier","wein","sekt","energy","sirup","smoothie"],
-      tiefkuehl: ["tiefkühl","tk","pizza","pommes","eis","speiseeis","fischstäbchen","spinat tk","erbsen tk","beeren tk","gemüsemischung"],
-      drogerie: ["toilettenpapier","klopapier","küchenrolle","taschentücher","zahncreme","zahnpasta","zahnbürste","shampoo","duschgel","seife","deo","creme","rasierer","waschmittel","weichspüler","spülmittel","spülmaschinentabs","reiniger","müllbeutel","backpapier","alufolie","frischhaltefolie","schwamm","windeln","tampons","binden"]
+      obst_gemuese: [
+        "apfel","äpfel","kiwi","kartoffel","kartoffeln","banane","birne","traube","erdbeer","himbeer","blaubeer","heidelbeer","orange","mandarine","zitrone","limette","mango","ananas","melone","pfirsich","nektarine","pflaume","kirsch","avocado","tomate","tomaten","gurke","paprika","karotte","möhre","zwiebel","knoblauch","salat","rucola","spinat","brokkoli","blumenkohl","zucchini","aubergine","pilz","champignon","lauch","porree","sellerie","radieschen","ingwer","kräuter","basilikum","petersilie","schnittlauch","obst","gemüse"
+      ],
+      brot_beilagen: [
+        "brot","haferflocken","ei","eier","quinoa","brötchen","toast","baguette","croissant","brezel","laugen","kuchen","muffin","keks","zwieback","knäckebrot","tortilla","wrap","nudel","nudeln","pasta","spaghetti","penne","reis","couscous","bulgur","hirse","müsli","cornflakes"
+      ],
+      fleisch: [
+        "hack","rinderhack","hähnchen","hähnchenbrust","fleisch","hackfleisch","pute","putenbrust","wurst","schinken","salami","speck","rindfleisch","schweinefleisch","bratwurst","schnitzel","steak","geflügel","lachs","fisch"
+      ],
+      molkerei_kuehlung: [
+        "milch","skyr","körniger frischkäse","frischkäse","hafermilch","sojamilch","mandelmilch","butter","margarine","käse","gouda","emmentaler","mozzarella","parmesan","quark","joghurt","sahne","schmand","crème fraîche","tofu","hummus","pesto","hefe","blätterteig"
+      ],
+      konserven_gewuerze: [
+        "gehackte tomaten","tomatenmark","salz","oregano","paprikapulver","mehl","zucker","pfeffer","gewürz","gewürze","öl","olivenöl","essig","senf","ketchup","mayo","soße","passierte tomaten","dosentomaten","mais","bohnen","linsen","kichererbsen","thunfisch","marmelade","honig","nutella","schokolade","chips","nüsse","mandeln","kaffee","tee","kakao","brühe"
+      ],
+      drogerie_haushalt: [
+        "zahnpasta","waschmittel","müllbeutel","toilettenpapier","klopapier","küchenrolle","taschentücher","zahncreme","zahnbürste","shampoo","duschgel","seife","deo","creme","rasierer","weichspüler","spülmittel","spülmaschinentabs","reiniger","backpapier","alufolie","frischhaltefolie","schwamm","windeln","tampons","binden"
+      ],
+      getraenke: [
+        "wasser","sekt","bier","sprudel","mineralwasser","saft","apfelsaft","orangensaft","cola","fanta","sprite","limo","eistee","wein","energy","sirup","smoothie"
+      ],
+      tiefkuehlung: [
+        "tk brokkoli","tk obst","tiefkühl","tk","pizza","pommes","eis","speiseeis","fischstäbchen","spinat tk","erbsen tk","beeren tk","gemüsemischung"
+      ]
     };
 
     const STORAGE_ITEMS_KEY = "shopping_items_v4";
@@ -352,6 +372,42 @@
     const STORAGE_DBURL_KEY = "shopping_db_url_v3";
     const STORAGE_DIRTY_KEY = "shopping_dirty_v4";
     const STORAGE_REV_KEY = "shopping_rev_v4";
+    const STORAGE_LEARNED_KEY = "shopping_learned_categories_v1";
+
+    let learnedCategories = {};
+    try {
+      const parsedLearned = JSON.parse(localStorage.getItem(STORAGE_LEARNED_KEY) || "{}");
+      if (parsedLearned && typeof parsedLearned === "object") {
+        learnedCategories = parsedLearned;
+      }
+    } catch (_) {
+      learnedCategories = {};
+    }
+
+    function extractLearnKey(rawName) {
+      const cleaned = (rawName || "")
+        .toLowerCase()
+        .replace(/[^a-zäöüß0-9\s-]/g, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+      if (!cleaned || cleaned.length < 2) return "";
+      const words = cleaned.split(" ").filter(w => w.length >= 2);
+      if (words.length === 0) return "";
+      return words[words.length - 1];
+    }
+
+    function learnCategoryMapping(rawName, catId) {
+      if (!catId || catId === "auto") return;
+      const fullPhrase = (rawName || "").toLowerCase().trim().replace(/\s+/g, " ");
+      const keyWord = extractLearnKey(rawName);
+      if (keyWord) {
+        learnedCategories[keyWord] = catId;
+      }
+      if (fullPhrase && fullPhrase.length >= 2) {
+        learnedCategories[fullPhrase] = catId;
+      }
+      localStorage.setItem(STORAGE_LEARNED_KEY, JSON.stringify(learnedCategories));
+    }
 
     const DEFAULT_PROJECT_ID = "einkaufsliste-4394a";
     const DEFAULT_DB_URL = "https://einkaufsliste-4394a-default-rtdb.europe-west1.firebasedatabase.app";
@@ -406,8 +462,24 @@
     }
 
     function detectCategory(text) {
-      const clean = text.toLowerCase().trim();
+      const clean = (text || "").toLowerCase().trim().replace(/\s+/g, " ");
       if (!clean) return "sonstiges";
+
+      if (learnedCategories[clean]) {
+        return learnedCategories[clean];
+      }
+
+      const lastKey = extractLearnKey(clean);
+      if (lastKey && learnedCategories[lastKey]) {
+        return learnedCategories[lastKey];
+      }
+
+      for (const [learnedTerm, catId] of Object.entries(learnedCategories)) {
+        if (learnedTerm && clean.includes(learnedTerm)) {
+          return catId;
+        }
+      }
+
       for (const [catId, words] of Object.entries(KEYWORDS)) {
         for (const w of words) {
           if (clean.includes(w)) return catId;
@@ -691,7 +763,11 @@
       if (!rawName) return;
 
       const combinedText = rawQty ? `${rawQty} ${rawName}` : rawName;
-      const chosen = categorySelect.value === "auto" ? detectCategory(rawName) : categorySelect.value;
+      const manualCat = categorySelect.value;
+      if (manualCat !== "auto") {
+        learnCategoryMapping(rawName, manualCat);
+      }
+      const chosen = manualCat === "auto" ? detectCategory(rawName) : manualCat;
 
       const now = Date.now();
       items.push({
@@ -790,6 +866,7 @@
       if (!newName) return;
       const idx = items.findIndex(i => i.id === editingItemId);
       if (idx !== -1) {
+        learnCategoryMapping(newName, editCategorySelect.value);
         items[idx].qty = newQty;
         items[idx].name = newName;
         items[idx].text = newQty ? `${newQty} ${newName}` : newName;
