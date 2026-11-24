@@ -549,36 +549,41 @@
       pushMergedState(items, Date.now());
     }
 
+    let isConnecting = false;
+
     async function connectFirebase() {
-      const safeCode = sanitizeCode(listCode) || "familie-einkauf-2026";
-      listCode = safeCode;
-      localStorage.setItem(STORAGE_CODE_KEY, listCode);
-      document.getElementById("activeCodeBadge").textContent =
-        listCode.length > 12 ? listCode.slice(0, 10) + "…" : listCode;
+      if (isConnecting) return;
+      isConnecting = true;
 
-      if (!navigator.onLine) {
-        setSyncState("offline", "Offline-Modus");
-        return;
-      }
-
-      if (activeRef) {
-        off(activeRef);
-        activeRef = null;
-      }
-      if (firebaseApp) {
-        try { await deleteApp(firebaseApp); } catch (_) {}
-        firebaseApp = null;
-        db = null;
-      }
-
-      const cleanUrl = (dbUrl || "").trim().replace(/\/+$/, "");
-      if (!cleanUrl) {
-        setSyncState("offline", "Nur lokal (keine DB-URL)");
-        return;
-      }
-
-      setSyncState("syncing", "Verbinde...");
       try {
+        const safeCode = sanitizeCode(listCode) || "familie-einkauf-2026";
+        listCode = safeCode;
+        localStorage.setItem(STORAGE_CODE_KEY, listCode);
+        document.getElementById("activeCodeBadge").textContent =
+          listCode.length > 12 ? listCode.slice(0, 10) + "…" : listCode;
+
+        if (!navigator.onLine) {
+          setSyncState("offline", "Offline-Modus");
+          return;
+        }
+
+        if (activeRef) {
+          off(activeRef);
+          activeRef = null;
+        }
+        if (firebaseApp) {
+          try { await deleteApp(firebaseApp); } catch (_) {}
+          firebaseApp = null;
+          db = null;
+        }
+
+        const cleanUrl = (dbUrl || "").trim().replace(/\/+$/, "");
+        if (!cleanUrl) {
+          setSyncState("offline", "Nur lokal (keine DB-URL)");
+          return;
+        }
+
+        setSyncState("syncing", "Verbinde...");
         firebaseApp = initializeApp({
           projectId: DEFAULT_PROJECT_ID,
           databaseURL: cleanUrl
@@ -597,7 +602,17 @@
             localRevision = Math.max(localRevision, remoteRev, Date.now());
             saveLocal();
             render();
-            pushToCloud();
+            hasPendingSync = false;
+            localStorage.removeItem(STORAGE_DIRTY_KEY);
+            set(activeRef, {
+              items: serializeItemsForFirebase(items),
+              updatedAt: localRevision
+            }).then(() => {
+              setSyncState("online", "Live verbunden");
+            }).catch((err) => {
+              console.error("Firebase write error:", err);
+              setSyncState("error", "Sync-Fehler (Regeln/URL prüfen)");
+            });
             return;
           }
 
@@ -611,11 +626,11 @@
             const activeLocal = items.filter(i => !i.deleted);
             if (activeLocal.length > 0 && localRevision > 0) {
               pushToCloud();
-            } else {
-              items = [];
-              saveLocal();
-              render();
+              return;
             }
+            items = [];
+            saveLocal();
+            render();
           }
           setSyncState("online", "Live verbunden");
         }, (error) => {
@@ -625,6 +640,8 @@
       } catch (err) {
         console.error("Firebase init error:", err);
         setSyncState("error", "Verbindungsfehler");
+      } finally {
+        isConnecting = false;
       }
     }
 
