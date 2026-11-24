@@ -406,19 +406,43 @@
       return (raw || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
     }
 
+    function serializeItemsForFirebase(arr) {
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      return arr.map(it => ({
+        id: String(it.id || ""),
+        text: String(it.text || ""),
+        qty: String(it.qty || ""),
+        name: String(it.name || it.text || ""),
+        category: String(it.category || "sonstiges"),
+        checked: Boolean(it.checked),
+        createdAt: Number(it.createdAt || Date.now())
+      }));
+    }
+
+    function parseItemsFromFirebase(rawItems) {
+      if (!rawItems) return [];
+      if (Array.isArray(rawItems)) return rawItems.filter(Boolean);
+      if (typeof rawItems === "object") {
+        return Object.values(rawItems).filter(Boolean);
+      }
+      return [];
+    }
+
     function pushToCloud() {
       localRevision = Date.now();
       saveLocal();
 
-      if (!db || !activeRef) {
-        hasPendingSync = true;
-        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
-        return;
-      }
       if (!navigator.onLine) {
         hasPendingSync = true;
         localStorage.setItem(STORAGE_DIRTY_KEY, "1");
         setSyncState("offline", "Offline (gespeichert)");
+        return;
+      }
+
+      if (!db || !activeRef) {
+        hasPendingSync = true;
+        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+        connectFirebase();
         return;
       }
 
@@ -427,7 +451,7 @@
       setSyncState("syncing", "Synchronisiere...");
 
       const payload = {
-        items: Array.isArray(items) ? items : [],
+        items: serializeItemsForFirebase(items),
         updatedAt: localRevision
       };
 
@@ -486,13 +510,16 @@
             pushToCloud();
             return;
           }
-          if (val && Array.isArray(val.items)) {
+          if (val && typeof val === "object") {
             const remoteRev = Number(val.updatedAt || 0);
+            const remoteItems = parseItemsFromFirebase(val.items);
             if (remoteRev >= localRevision) {
-              items = val.items;
+              items = remoteItems;
               localRevision = remoteRev;
               saveLocal();
               render();
+            } else if (items.length === 0 && remoteItems.length > 0 && localRevision > 0) {
+              pushToCloud();
             }
           } else if (val === null) {
             if (items.length > 0 && localRevision > 0) {
