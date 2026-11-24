@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Einkaufsliste</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
+    body { overscroll-behavior-y: contain; user-select: none; -webkit-user-select: none; }
+    input, select { user-select: text; -webkit-user-select: text; }
+    .drag-ghost {
+      position: fixed;
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.94;
+      box-shadow: 0 14px 28px rgba(15, 23, 42, 0.22);
+      border-radius: 0.75rem;
+      background: #ffffff;
+      border: 2px solid #10b981;
+      will-change: transform;
+    }
+    .drop-target-active {
+      outline: 2px dashed #10b981;
+      outline-offset: 2px;
+      background-color: rgba(16, 185, 129, 0.06);
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-24 font-sans">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 px-4 py-3 shadow-sm">
+    <div class="max-w-lg mx-auto flex items-center justify-between gap-2">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm">
+          <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h1 class="text-base font-bold leading-tight text-slate-900">Einkaufsliste</h1>
+          <div class="flex items-center gap-1.5 text-xs">
+            <span id="syncDot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span id="syncStatus" class="text-slate-500 font-medium">Verbinde...</span>
+          </div>
+        </div>
+      </div>
+
+      <button id="openSyncBtn" type="button"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-xs font-semibold text-slate-700 border border-slate-200 transition">
+        <i data-lucide="key-round" class="w-3.5 h-3.5 text-emerald-600"></i>
+        <span id="activeCodeBadge">Code</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="max-w-lg mx-auto px-3 pt-4 space-y-4">
+
+    <!-- Add Item Card -->
+    <section class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200/80 space-y-2.5">
+      <div class="flex gap-2">
+        <input id="itemInput" type="text" placeholder="Artikel eingeben (z. B. 2x Milch, Äpfel)..."
+          autocomplete="off"
+          class="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white focus:outline-none text-sm font-medium placeholder:text-slate-400" />
+        <button id="addBtn" type="button"
+          class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold text-sm flex items-center justify-center shadow-sm transition">
+          <i data-lucide="plus" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
+          <span class="shrink-0">Vorschau:</span>
+          <span id="previewBadge"
+            class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-medium truncate border border-emerald-200/70">
+            <i data-lucide="sparkles" class="w-3.5 h-3.5 shrink-0"></i>
+            <span id="previewText">Auto (erkennen)</span>
+          </span>
+        </div>
+
+        <select id="categorySelect" aria-label="Kategorie wählen"
+          class="text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:border-emerald-500 max-w-[175px]">
+          <option value="auto">Auto (erkennen)</option>
+          <option value="obst_gemuese">1. Obst &amp; Gemüse</option>
+          <option value="kuehlung">2. Kühlung &amp; Molkerei</option>
+          <option value="backwaren">3. Brot &amp; Backwaren</option>
+          <option value="vorrat">4. Vorrat &amp; Konserven</option>
+          <option value="getraenke">5. Getränke</option>
+          <option value="tiefkuehl">6. Tiefkühlkost</option>
+          <option value="drogerie">7. Drogerie &amp; Haushalt</option>
+          <option value="sonstiges">8. Sonstiges</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Open Categories Container -->
+    <div id="categoriesContainer" class="space-y-3"></div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="hidden text-center py-10 px-4 bg-white rounded-2xl border border-slate-200/80">
+      <div class="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-2.5">
+        <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+      </div>
+      <p class="text-sm font-semibold text-slate-700">Alles erledigt!</p>
+      <p class="text-xs text-slate-400 mt-0.5">Füge oben einen neuen Artikel hinzu.</p>
+    </div>
+
+    <!-- Checked / In Cart Section -->
+    <section id="checkedSection" class="hidden bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      <div class="px-3.5 py-2.5 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="shopping-bag" class="w-4 h-4 text-slate-500"></i>
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-600">
+            Bereits im Einkaufswagen (<span id="checkedCount">0</span>)
+          </h2>
+        </div>
+        <button id="clearCheckedBtn" type="button"
+          class="text-xs font-semibold text-rose-600 hover:text-rose-700 px-2 py-1 rounded hover:bg-rose-50 transition">
+          Leeren
+        </button>
+      </div>
+      <ul id="checkedList" class="divide-y divide-slate-100"></ul>
+    </section>
+
+  </main>
+
+  <!-- Edit Modal -->
+  <div id="editModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
+    <div class="bg-white w-full max-w-md rounded-2xl p-4 shadow-xl border border-slate-200 space-y-3.5">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-900">Eintrag bearbeiten</h3>
+        <button id="closeEditModal" type="button" class="p-1 text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <div class="space-y-2.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Artikel / Menge</label>
+          <input id="editTextInput" type="text"
+            class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-medium" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Kategorie</label>
+          <select id="editCategorySelect"
+            class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-medium bg-white">
+            <option value="obst_gemuese">1. Obst &amp; Gemüse</option>
+            <option value="kuehlung">2. Kühlung &amp; Molkerei</option>
+            <option value="backwaren">3. Brot &amp; Backwaren</option>
+            <option value="vorrat">4. Vorrat &amp; Konserven</option>
+            <option value="getraenke">5. Getränke</option>
+            <option value="tiefkuehl">6. Tiefkühlkost</option>
+            <option value="drogerie">7. Drogerie &amp; Haushalt</option>
+            <option value="sonstiges">8. Sonstiges</option>
+          </select>
+        </div>
+      </div>
+      <div class="flex items-center justify-between pt-1 gap-2">
+        <button id="deleteItemBtn" type="button"
+          class="px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 flex items-center gap-1">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          Löschen
+        </button>
+        <div class="flex gap-2">
+          <button id="cancelEditBtn" type="button"
+            class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">
+            Abbrechen
+          </button>
+          <button id="saveEditBtn" type="button"
+            class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700">
+            Speichern
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sync / List-Code Modal -->
+  <div id="syncModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
+    <div class="bg-white w-full max-w-md rounded-2xl p-4 shadow-xl border border-slate-200 space-y-3.5">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-bold text-slate-900">Cloud-Sync &amp; Listen-Code</h3>
+        <button id="closeSyncModal" type="button" class="p-1 text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-500 leading-relaxed">
+        Gebt auf beiden Handys denselben geheimen Listen-Code ein, um eure Einkaufsliste live zu teilen.
+      </p>
+      <div class="space-y-2.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Geheimer Listen-Code</label>
+          <div class="flex gap-1.5">
+            <input id="listCodeInput" type="text" placeholder="z. B. k9mP-4xL8-wQ2z"
+              class="flex-1 px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-mono" />
+            <button id="genCodeBtn" type="button" title="Zufälligen Code erzeugen"
+              class="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700">
+              Neu
+            </button>
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-600 mb-1">Firebase Realtime Database URL</label>
+          <input id="dbUrlInput" type="url"
+            placeholder="https://einkaufsliste-4394a-default-rtdb.europe-west1.firebasedatabase.app"
+            class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-xs font-mono" />
+          <p class="text-[11px] text-slate-400 mt-1">
+            Falls deine Datenbank in Europa liegt, trage hier die URL aus der Firebase Console ein.
+          </p>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-1">
+        <button id="cancelSyncBtn" type="button"
+          class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">
+          Schließen
+        </button>
+        <button id="saveSyncBtn" type="button"
+          class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700">
+          Verbinden
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firebase & App Logic -->
+  <script type="module">
+    import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getDatabase, ref, onValue, set, off } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+    const CATEGORIES = [
+      { id: "obst_gemuese", label: "1. Obst & Gemüse", icon: "apple", color: "text-emerald-600 bg-emerald-50" },
+      { id: "kuehlung",     label: "2. Kühlung & Molkerei", icon: "milk", color: "text-sky-600 bg-sky-50" },
+      { id: "backwaren",    label: "3. Brot & Backwaren", icon: "croissant", color: "text-amber-600 bg-amber-50" },
+      { id: "vorrat",       label: "4. Vorrat & Konserven", icon: "package", color: "text-orange-600 bg-orange-50" },
+      { id: "getraenke",    label: "5. Getränke", icon: "cup-soda", color: "text-blue-600 bg-blue-50" },
+      { id: "tiefkuehl",    label: "6. Tiefkühlkost", icon: "snowflake", color: "text-cyan-600 bg-cyan-50" },
+      { id: "drogerie",     label: "7. Drogerie & Haushalt", icon: "sparkles", color: "text-purple-600 bg-purple-50" },
+      { id: "sonstiges",    label: "8. Sonstiges", icon: "tag", color: "text-slate-600 bg-slate-100" }
+    ];
+
+    const KEYWORDS = {
+      obst_gemuese: ["apfel","äpfel","banane","birne","traube","erdbeer","himbeer","blaubeer","heidelbeer","orange","mandarine","zitrone","limette","kiwi","mango","ananas","melone","pfirsich","nektarine","pflaume","kirsch","avocado","tomate","gurke","paprika","karotte","möhre","kartoffel","zwiebel","knoblauch","salat","rucola","spinat","brokkoli","blumenkohl","zucchini","aubergine","pilz","champignon","lauch","porree","sellerie","radieschen","ingwer","kräuter","basilikum","petersilie","schnittlauch","obst","gemüse"],
+      kuehlung: ["milch","hafermilch","sojamilch","mandelmilch","butter","margarine","käse","gouda","emmentaler","mozzarella","parmesan","frischkäse","quark","joghurt","skyr","sahne","schmand","crème fraîche","ei","eier","wurst","schinken","salami","speck","fleisch","hähnchen","pute","hackfleisch","lachs","fisch","tofu","hummus","pesto","hefe","blätterteig"],
+      backwaren: ["brot","brötchen","toast","baguette","croissant","brezel","laugen","kuchen","muffin","keks","zwieback","knäckebrot","tortilla","wrap"],
+      vorrat: ["nudel","pasta","spaghetti","penne","reis","mehl","zucker","salz","pfeffer","gewürz","öl","olivenöl","essig","senf","ketchup","mayo","soße","passierte tomaten","dosentomaten","mais","bohnen","linsen","kichererbsen","thunfisch","müsli","haferflocken","cornflakes","marmelade","honig","nutella","schokolade","chips","nüsse","mandeln","kaffee","tee","kakao","brühe"],
+      getraenke: ["wasser","sprudel","mineralwasser","saft","apfelsaft","orangensaft","cola","fanta","sprite","limo","eistee","bier","wein","sekt","energy","sirup","smoothie"],
+      tiefkuehl: ["tiefkühl","tk","pizza","pommes","eis","speiseeis","fischstäbchen","spinat tk","erbsen tk","beeren tk","gemüsemischung"],
+      drogerie: ["toilettenpapier","klopapier","küchenrolle","taschentücher","zahncreme","zahnpasta","zahnbürste","shampoo","duschgel","seife","deo","creme","rasierer","waschmittel","weichspüler","spülmittel","spülmaschinentabs","reiniger","müllbeutel","backpapier","alufolie","frischhaltefolie","schwamm","windeln","tampons","binden"]
+    };
+
+    const STORAGE_ITEMS_KEY = "shopping_items_v3";
+    const STORAGE_CODE_KEY = "shopping_list_code_v3";
+    const STORAGE_DBURL_KEY = "shopping_db_url_v3";
+    const STORAGE_DIRTY_KEY = "shopping_dirty_v3";
+
+    const DEFAULT_PROJECT_ID = "einkaufsliste-4394a";
+    const DEFAULT_DB_URL = "https://einkaufsliste-4394a-default-rtdb.europe-west1.firebasedatabase.app";
+
+    let items = [];
+    let listCode = localStorage.getItem(STORAGE_CODE_KEY) || "familie-einkauf-2026";
+    let dbUrl = localStorage.getItem(STORAGE_DBURL_KEY) || DEFAULT_DB_URL;
+    let hasPendingSync = localStorage.getItem(STORAGE_DIRTY_KEY) === "1";
+
+    let firebaseApp = null;
+    let db = null;
+    let activeRef = null;
+    let isRemoteUpdate = false;
+    let editingItemId = null;
+
+    // Load local cache immediately
+    try {
+      const cached = JSON.parse(localStorage.getItem(STORAGE_ITEMS_KEY) || "[]");
+      if (Array.isArray(cached)) items = cached;
+    } catch (_) { items = []; }
+
+    function detectCategory(text) {
+      const clean = text.toLowerCase().trim();
+      if (!clean) return "sonstiges";
+      for (const [catId, words] of Object.entries(KEYWORDS)) {
+        for (const w of words) {
+          if (clean.includes(w)) return catId;
+        }
+      }
+      return "sonstiges";
+    }
+
+    function getCategoryMeta(catId) {
+      return CATEGORIES.find(c => c.id === catId) || CATEGORIES[CATEGORIES.length - 1];
+    }
+
+    function saveLocal() {
+      localStorage.setItem(STORAGE_ITEMS_KEY, JSON.stringify(items));
+    }
+
+    function setSyncState(state, label) {
+      const dot = document.getElementById("syncDot");
+      const status = document.getElementById("syncStatus");
+      status.textContent = label;
+      dot.className = "w-2 h-2 rounded-full " + (
+        state === "online" ? "bg-emerald-500" :
+        state === "syncing" ? "bg-amber-400 animate-pulse" :
+        state === "error" ? "bg-rose-500" : "bg-slate-400"
+      );
+    }
+
+    function sanitizeCode(raw) {
+      return (raw || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    }
+
+    function pushToCloud() {
+      saveLocal();
+      if (!db || !activeRef) {
+        hasPendingSync = true;
+        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+        return;
+      }
+      if (!navigator.onLine) {
+        hasPendingSync = true;
+        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+        setSyncState("offline", "Offline (gespeichert)");
+        return;
+      }
+      setSyncState("syncing", "Synchronisiere...");
+      set(activeRef, {
+        items,
+        updatedAt: Date.now()
+      }).then(() => {
+        hasPendingSync = false;
+        localStorage.removeItem(STORAGE_DIRTY_KEY);
+        setSyncState("online", "Live verbunden");
+      }).catch((err) => {
+        console.error("Firebase write error:", err);
+        hasPendingSync = true;
+        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+        setSyncState("error", "Sync-Fehler (Regeln/URL prüfen)");
+      });
+    }
+
+    async function connectFirebase() {
+      const safeCode = sanitizeCode(listCode) || "familie-einkauf-2026";
+      listCode = safeCode;
+      localStorage.setItem(STORAGE_CODE_KEY, listCode);
+      document.getElementById("activeCodeBadge").textContent =
+        listCode.length > 12 ? listCode.slice(0, 10) + "…" : listCode;
+
+      if (activeRef) {
+        off(activeRef);
+        activeRef = null;
+      }
+      if (firebaseApp) {
+        try { await deleteApp(firebaseApp); } catch (_) {}
+        firebaseApp = null;
+        db = null;
+      }
+
+      const cleanUrl = (dbUrl || "").trim().replace(/\/+$/, "");
+      if (!cleanUrl) {
+        setSyncState("offline", "Nur lokal (keine DB-URL)");
+        return;
+      }
+
+      setSyncState("syncing", "Verbinde...");
+      try {
+        firebaseApp = initializeApp({
+          projectId: DEFAULT_PROJECT_ID,
+          databaseURL: cleanUrl
+        }, "app_" + Date.now());
+        db = getDatabase(firebaseApp);
+        activeRef = ref(db, "lists/" + listCode);
+
+        onValue(activeRef, (snapshot) => {
+          const val = snapshot.val();
+          if (hasPendingSync) {
+            pushToCloud();
+            return;
+          }
+          isRemoteUpdate = true;
+          if (val && Array.isArray(val.items)) {
+            items = val.items;
+            saveLocal();
+            render();
+          } else if (val === null && items.length > 0) {
+            pushToCloud();
+          } else if (val === null) {
+            items = [];
+            saveLocal();
+            render();
+          }
+          isRemoteUpdate = false;
+          setSyncState("online", "Live verbunden");
+        }, (error) => {
+          console.error("Firebase read error:", error);
+          setSyncState("error", "Keine Berechtigung / URL falsch");
+        });
+      } catch (err) {
+        console.error("Firebase init error:", err);
+        setSyncState("error", "Verbindungsfehler");
+      }
+    }
+
+    window.addEventListener("online", () => {
+      if (hasPendingSync) pushToCloud();
+      else connectFirebase();
+    });
+    window.addEventListener("offline", () => {
+      setSyncState("offline", "Offline-Modus");
+    });
+
+    // Live category preview
+    const itemInput = document.getElementById("itemInput");
+    const categorySelect = document.getElementById("categorySelect");
+    const previewText = document.getElementById("previewText");
+    const previewBadge = document.getElementById("previewBadge");
+
+    function updatePreview() {
+      const selected = categorySelect.value;
+      const text = itemInput.value.trim();
+      let meta;
+      if (selected !== "auto") {
+        meta = getCategoryMeta(selected);
+        previewText.textContent = meta.label;
+      } else if (text) {
+        const detected = detectCategory(text);
+        meta = getCategoryMeta(detected);
+        previewText.textContent = meta.label;
+      } else {
+        previewText.textContent = "Auto (erkennen)";
+        previewBadge.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5 shrink-0"></i><span>Auto (erkennen)</span>`;
+        lucide.createIcons({ root: previewBadge });
+        return;
+      }
+      previewBadge.innerHTML = `<i data-lucide="${meta.icon}" class="w-3.5 h-3.5 shrink-0"></i><span>${meta.label}</span>`;
+      lucide.createIcons({ root: previewBadge });
+    }
+
+    itemInput.addEventListener("input", updatePreview);
+    categorySelect.addEventListener("change", updatePreview);
+
+    function addItem() {
+      const text = itemInput.value.trim();
+      if (!text) return;
+      const chosen = categorySelect.value === "auto" ? detectCategory(text) : categorySelect.value;
+      items.push({
+        id: "id_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+        text,
+        category: chosen,
+        checked: false,
+        createdAt: Date.now()
+      });
+      itemInput.value = "";
+      categorySelect.value = "auto";
+      updatePreview();
+      render();
+      pushToCloud();
+    }
+
+    document.getElementById("addBtn").addEventListener("click", addItem);
+    itemInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addItem();
+      }
+    });
+
+    function toggleItemChecked(id) {
+      const idx = items.findIndex(i => i.id === id);
+      if (idx === -1) return;
+      items[idx].checked = !items[idx].checked;
+      render();
+      pushToCloud();
+    }
+
+    // Edit Modal
+    const editModal = document.getElementById("editModal");
+    const editTextInput = document.getElementById("editTextInput");
+    const editCategorySelect = document.getElementById("editCategorySelect");
+
+    function openEditModal(id) {
+      const item = items.find(i => i.id === id);
+      if (!item) return;
+      editingItemId = id;
+      editTextInput.value = item.text;
+      editCategorySelect.value = item.category || "sonstiges";
+      editModal.classList.remove("hidden");
+      setTimeout(() => editTextInput.focus(), 50);
+    }
+
+    function closeEdit() {
+      editingItemId = null;
+      editModal.classList.add("hidden");
+    }
+
+    document.getElementById("closeEditModal").addEventListener("click", closeEdit);
+    document.getElementById("cancelEditBtn").addEventListener("click", closeEdit);
+    document.getElementById("saveEditBtn").addEventListener("click", () => {
+      if (!editingItemId) return;
+      const newText = editTextInput.value.trim();
+      if (!newText) return;
+      const idx = items.findIndex(i => i.id === editingItemId);
+      if (idx !== -1) {
+        items[idx].text = newText;
+        items[idx].category = editCategorySelect.value;
+        render();
+        pushToCloud();
+      }
+      closeEdit();
+    });
+    document.getElementById("deleteItemBtn").addEventListener("click", () => {
+      if (!editingItemId) return;
+      items = items.filter(i => i.id !== editingItemId);
+      render();
+      pushToCloud();
+      closeEdit();
+    });
+
+    // Clear checked items
+    document.getElementById("clearCheckedBtn").addEventListener("click", () => {
+      items = items.filter(i => !i.checked);
+      render();
+      pushToCloud();
+    });
+
+    // Sync Modal
+    const syncModal = document.getElementById("syncModal");
+    const listCodeInput = document.getElementById("listCodeInput");
+    const dbUrlInput = document.getElementById("dbUrlInput");
+
+    document.getElementById("openSyncBtn").addEventListener("click", () => {
+      listCodeInput.value = listCode;
+      dbUrlInput.value = dbUrl;
+      syncModal.classList.remove("hidden");
+    });
+    document.getElementById("closeSyncModal").addEventListener("click", () => syncModal.classList.add("hidden"));
+    document.getElementById("cancelSyncBtn").addEventListener("click", () => syncModal.classList.add("hidden"));
+    document.getElementById("genCodeBtn").addEventListener("click", () => {
+      const part = () => Math.random().toString(36).substring(2, 6);
+      listCodeInput.value = `${part()}-${part()}-${part()}`;
+    });
+    document.getElementById("saveSyncBtn").addEventListener("click", () => {
+      const newCode = sanitizeCode(listCodeInput.value);
+      const newUrl = dbUrlInput.value.trim();
+      if (newCode) listCode = newCode;
+      dbUrl = newUrl;
+      localStorage.setItem(STORAGE_CODE_KEY, listCode);
+      localStorage.setItem(STORAGE_DBURL_KEY, dbUrl);
+      syncModal.classList.add("hidden");
+      connectFirebase();
+    });
+
+    // Touch / Pointer Drag & Drop between categories
+    let dragState = null;
+
+    function startDrag(item, rowEl, clientX, clientY) {
+      const rect = rowEl.getBoundingClientRect();
+      const ghost = rowEl.cloneNode(true);
+      ghost.classList.add("drag-ghost");
+      ghost.style.width = rect.width + "px";
+      ghost.style.left = "0px";
+      ghost.style.top = "0px";
+      const offsetX = clientX - rect.left;
+      const offsetY = clientY - rect.top;
+      ghost.style.transform = `translate3d(${clientX - offsetX}px, ${clientY - offsetY}px, 0) scale(1.02)`;
+      document.body.appendChild(ghost);
+      rowEl.style.opacity = "0.35";
+
+      if (navigator.vibrate) navigator.vibrate(25);
+
+      dragState = {
+        itemId: item.id,
+        rowEl,
+        ghost,
+        offsetX,
+        offsetY,
+        targetCatId: item.category
+      };
+    }
+
+    function moveDrag(clientX, clientY) {
+      if (!dragState) return;
+      const x = clientX - dragState.offsetX;
+      const y = clientY - dragState.offsetY;
+      dragState.ghost.style.transform = `translate3d(${x}px, ${y}px, 0) scale(1.02)`;
+
+      document.querySelectorAll("[data-category-card]").forEach(card => {
+        card.classList.remove("drop-target-active");
+        const r = card.getBoundingClientRect();
+        if (clientY >= r.top && clientY <= r.bottom && clientX >= r.left && clientX <= r.right) {
+          card.classList.add("drop-target-active");
+          dragState.targetCatId = card.getAttribute("data-category-card");
+        }
+      });
+    }
+
+    function endDrag() {
+      if (!dragState) return;
+      dragState.ghost.remove();
+      dragState.rowEl.style.opacity = "1";
+      document.querySelectorAll("[data-category-card]").forEach(c => c.classList.remove("drop-target-active"));
+
+      const idx = items.findIndex(i => i.id === dragState.itemId);
+      if (idx !== -1 && dragState.targetCatId && items[idx].category !== dragState.targetCatId) {
+        items[idx].category = dragState.targetCatId;
+        render();
+        pushToCloud();
+      }
+      dragState = null;
+    }
+
+    window.addEventListener("pointermove", (e) => {
+      if (dragState) {
+        e.preventDefault();
+        moveDrag(e.clientX, e.clientY);
+      }
+    }, { passive: false });
+
+    window.addEventListener("pointerup", () => {
+      if (dragState) endDrag();
+    });
+    window.addEventListener("pointercancel", () => {
+      if (dragState) endDrag();
+    });
+
+    function render() {
+      const container = document.getElementById("categoriesContainer");
+      const emptyState = document.getElementById("emptyState");
+      const checkedSection = document.getElementById("checkedSection");
+      const checkedList = document.getElementById("checkedList");
+      const checkedCount = document.getElementById("checkedCount");
+
+      container.innerHTML = "";
+      checkedList.innerHTML = "";
+
+      const openItems = items.filter(i => !i.checked);
+      const doneItems = items.filter(i => i.checked);
+
+      emptyState.classList.toggle("hidden", openItems.length > 0);
+
+      CATEGORIES.forEach(cat => {
+        const catItems = openItems.filter(i => (i.category || "sonstiges") === cat.id);
+        if (catItems.length === 0) return;
+
+        const card = document.createElement("section");
+        card.setAttribute("data-category-card", cat.id);
+        card.className = "bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden transition";
+
+        const header = document.createElement("div");
+        header.className = "px-3.5 py-2.5 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between";
+        header.innerHTML = `
+          <div class="flex items-center gap-2">
+            <span class="w-6 h-6 rounded-lg ${cat.color} flex items-center justify-center">
+              <i data-lucide="${cat.icon}" class="w-3.5 h-3.5"></i>
+            </span>
+            <h2 class="text-xs font-bold text-slate-700">${cat.label}</h2>
+          </div>
+          <span class="text-[11px] font-semibold text-slate-400">${catItems.length}</span>
+        `;
+        card.appendChild(header);
+
+        const ul = document.createElement("ul");
+        ul.className = "divide-y divide-slate-100";
+
+        catItems.forEach(item => {
+          const li = document.createElement("li");
+          li.className = "flex items-center gap-2 px-3 py-2.5 bg-white active:bg-slate-50 transition";
+
+          // Drag Handle
+          const handle = document.createElement("button");
+          handle.type = "button";
+          handle.setAttribute("aria-label", "Verschieben");
+          handle.className = "p-1.5 text-slate-300 hover:text-slate-500 touch-none cursor-grab";
+          handle.innerHTML = `<i data-lucide="grip-vertical" class="w-4 h-4"></i>`;
+
+          handle.addEventListener("pointerdown", (e) => {
+            e.stopPropagation();
+            startDrag(item, li, e.clientX, e.clientY);
+          });
+
+          // Item Text (Tap to Edit, Long-Press to Drag)
+          const textBtn = document.createElement("div");
+          textBtn.className = "flex-1 min-w-0 py-0.5 text-sm font-medium text-slate-800 cursor-pointer break-words";
+          textBtn.textContent = item.text;
+
+          let pressTimer = null;
+          let startX = 0;
+          let startY = 0;
+          let moved = false;
+
+          textBtn.addEventListener("pointerdown", (e) => {
+            if (e.button !== 0 && e.pointerType === "mouse") return;
+            startX = e.clientX;
+            startY = e.clientY;
+            moved = false;
+            pressTimer = setTimeout(() => {
+              pressTimer = null;
+              startDrag(item, li, e.clientX, e.clientY);
+            }, 260);
+          });
+
+          textBtn.addEventListener("pointermove", (e) => {
+            if (Math.abs(e.clientX - startX) > 8 || Math.abs(e.clientY - startY) > 8) {
+              moved = true;
+              if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+              }
+            }
+          });
+
+          textBtn.addEventListener("pointerup", () => {
+            if (pressTimer) {
+              clearTimeout(pressTimer);
+              pressTimer = null;
+              if (!moved && !dragState) {
+                openEditModal(item.id);
+              }
+            }
+          });
+
+          textBtn.addEventListener("pointercancel", () => {
+            if (pressTimer) {
+              clearTimeout(pressTimer);
+              pressTimer = null;
+            }
+          });
+
+          // Check Button
+          const checkBtn = document.createElement("button");
+          checkBtn.type = "button";
+          checkBtn.setAttribute("aria-label", "Abhaken");
+          checkBtn.className = "w-8 h-8 rounded-full border-2 border-slate-300 hover:border-emerald-500 active:bg-emerald-50 flex items-center justify-center text-transparent hover:text-emerald-500 shrink-0 transition";
+          checkBtn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i>`;
+          checkBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toggleItemChecked(item.id);
+          });
+
+          li.appendChild(handle);
+          li.appendChild(textBtn);
+          li.appendChild(checkBtn);
+          ul.appendChild(li);
+        });
+
+        card.appendChild(ul);
+        container.appendChild(card);
+      });
+
+      // Render Checked Items
+      if (doneItems.length > 0) {
+        checkedSection.classList.remove("hidden");
+        checkedCount.textContent = String(doneItems.length);
+        doneItems.forEach(item => {
+          const li = document.createElement("li");
+          li.className = "flex items-center justify-between gap-2.5 px-3.5 py-2.5 bg-white";
+          li.innerHTML = `
+            <span class="text-sm text-slate-400 line-through break-words flex-1">${escapeHtml(item.text)}</span>
+          `;
+          const restoreBtn = document.createElement("button");
+          restoreBtn.type = "button";
+          restoreBtn.setAttribute("aria-label", "Zurück auf die Liste");
+          restoreBtn.className = "w-8 h-8 rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 flex items-center justify-center shrink-0 transition";
+          restoreBtn.innerHTML = `<i data-lucide="rotate-ccw" class="w-4 h-4"></i>`;
+          restoreBtn.addEventListener("click", () => toggleItemChecked(item.id));
+          li.appendChild(restoreBtn);
+          checkedList.appendChild(li);
+        });
+      } else {
+        checkedSection.classList.add("hidden");
+      }
+
+      lucide.createIcons();
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, m => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[m]));
+    }
+
+    render();
+    connectFirebase();
+  </script>
+</body>
+</html>
