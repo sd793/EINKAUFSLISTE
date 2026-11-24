@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#059669" />
   <title>Einkaufsliste</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
@@ -232,6 +233,96 @@
     </div>
   </div>
 
+  <!-- Inline Service Worker Registration for Offline Page Opening -->
+  <script>
+    (function registerOfflineServiceWorker() {
+      if (!("serviceWorker" in navigator)) return;
+      const swCode = `
+        const CACHE_NAME = "einkaufsliste-offline-v4";
+        const PAGE_URL = ${JSON.stringify(window.location.href)};
+
+        self.addEventListener("install", (event) => {
+          event.waitUntil((async () => {
+            const cache = await caches.open(CACHE_NAME);
+            try {
+              const pageResp = await fetch(PAGE_URL, { cache: "reload" });
+              if (pageResp && pageResp.ok) {
+                await cache.put(PAGE_URL, pageResp.clone());
+                await cache.put(new URL("./", PAGE_URL).toString(), pageResp);
+              }
+            } catch (_) {}
+            await self.skipWaiting();
+          })());
+        });
+
+        self.addEventListener("activate", (event) => {
+          event.waitUntil((async () => {
+            const keys = await caches.keys();
+            await Promise.all(
+              keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))
+            );
+            await self.clients.claim();
+          })());
+        });
+
+        self.addEventListener("fetch", (event) => {
+          const req = event.request;
+          if (req.method !== "GET") return;
+          const url = new URL(req.url);
+
+          // Ignore Firebase realtime streams/requests so offline buffer handles them cleanly
+          if (url.hostname.includes("firebasedatabase.app") || url.hostname.includes("firebaseio.com")) {
+            return;
+          }
+
+          if (req.mode === "navigate") {
+            event.respondWith((async () => {
+              const cache = await caches.open(CACHE_NAME);
+              try {
+                const netResp = await fetch(req);
+                if (netResp && netResp.ok) {
+                  cache.put(req, netResp.clone());
+                  cache.put(PAGE_URL, netResp.clone());
+                }
+                return netResp;
+              } catch (_) {
+                return (
+                  (await cache.match(req)) ||
+                  (await cache.match(PAGE_URL)) ||
+                  (await cache.match(new URL("./", PAGE_URL).toString())) ||
+                  new Response("<h1>Einkaufsliste Offline</h1><p>Bitte Seite einmal mit Internet öffnen.</p>", {
+                    headers: { "Content-Type": "text/html; charset=utf-8" }
+                  })
+                );
+              }
+            })());
+            return;
+          }
+
+          // Cache-first with background refresh for static assets (Tailwind, Lucide, etc.)
+          event.respondWith((async () => {
+            const cache = await caches.open(CACHE_NAME);
+            const cached = await cache.match(req);
+            const fetchPromise = fetch(req).then((netResp) => {
+              if (netResp && netResp.ok) {
+                cache.put(req, netResp.clone());
+              }
+              return netResp;
+            }).catch(() => cached);
+
+            return cached || fetchPromise;
+          })());
+        });
+      `;
+
+      const blob = new Blob([swCode], { type: "application/javascript" });
+      const swUrl = URL.createObjectURL(blob);
+      navigator.serviceWorker.register(swUrl, { scope: "./" }).catch((err) => {
+        console.warn("Service Worker registration skipped/failed:", err);
+      });
+    })();
+  </script>
+
   <!-- Firebase & App Logic -->
   <script type="module">
     import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
@@ -351,6 +442,11 @@
       document.getElementById("activeCodeBadge").textContent =
         listCode.length > 12 ? listCode.slice(0, 10) + "…" : listCode;
 
+      if (!navigator.onLine) {
+        setSyncState("offline", "Offline-Modus");
+        return;
+      }
+
       if (activeRef) {
         off(activeRef);
         activeRef = null;
@@ -434,11 +530,11 @@
       } else {
         previewText.textContent = "Auto (erkennen)";
         previewBadge.innerHTML = `<i data-lucide="sparkles" class="w-3.5 h-3.5 shrink-0"></i><span>Auto (erkennen)</span>`;
-        lucide.createIcons({ root: previewBadge });
+        if (window.lucide) lucide.createIcons({ root: previewBadge });
         return;
       }
       previewBadge.innerHTML = `<i data-lucide="${meta.icon}" class="w-3.5 h-3.5 shrink-0"></i><span>${meta.label}</span>`;
-      lucide.createIcons({ root: previewBadge });
+      if (window.lucide) lucide.createIcons({ root: previewBadge });
     }
 
     itemInput.addEventListener("input", updatePreview);
@@ -488,7 +584,6 @@
       }
     });
 
-    // Fallback: Form-Submit (z. B. mobiler Go/Fertig-Button der Tastatur)
     addForm.addEventListener("submit", (e) => {
       e.preventDefault();
       if (document.activeElement === qtyInput) {
@@ -843,7 +938,7 @@
         checkedSection.classList.add("hidden");
       }
 
-      lucide.createIcons();
+      if (window.lucide) lucide.createIcons();
     }
 
     function escapeHtml(str) {
