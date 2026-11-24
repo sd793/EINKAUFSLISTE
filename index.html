@@ -347,29 +347,63 @@
       drogerie: ["toilettenpapier","klopapier","küchenrolle","taschentücher","zahncreme","zahnpasta","zahnbürste","shampoo","duschgel","seife","deo","creme","rasierer","waschmittel","weichspüler","spülmittel","spülmaschinentabs","reiniger","müllbeutel","backpapier","alufolie","frischhaltefolie","schwamm","windeln","tampons","binden"]
     };
 
-    const STORAGE_ITEMS_KEY = "shopping_items_v3";
+    const STORAGE_ITEMS_KEY = "shopping_items_v4";
     const STORAGE_CODE_KEY = "shopping_list_code_v3";
     const STORAGE_DBURL_KEY = "shopping_db_url_v3";
-    const STORAGE_DIRTY_KEY = "shopping_dirty_v3";
+    const STORAGE_DIRTY_KEY = "shopping_dirty_v4";
+    const STORAGE_REV_KEY = "shopping_rev_v4";
 
     const DEFAULT_PROJECT_ID = "einkaufsliste-4394a";
     const DEFAULT_DB_URL = "https://einkaufsliste-4394a-default-rtdb.europe-west1.firebasedatabase.app";
 
+    // Each item has:
+    // { id, text, qty, name, category, checked, deleted, updatedAt, createdAt }
     let items = [];
     let listCode = localStorage.getItem(STORAGE_CODE_KEY) || "familie-einkauf-2026";
     let dbUrl = localStorage.getItem(STORAGE_DBURL_KEY) || DEFAULT_DB_URL;
     let hasPendingSync = localStorage.getItem(STORAGE_DIRTY_KEY) === "1";
-    let localRevision = Number(localStorage.getItem("shopping_rev_v3") || "0");
+    let localRevision = Number(localStorage.getItem(STORAGE_REV_KEY) || "0");
 
     let firebaseApp = null;
     let db = null;
     let activeRef = null;
     let editingItemId = null;
 
+    function normalizeItem(raw, fallbackTime = Date.now()) {
+      if (!raw || typeof raw !== "object") return null;
+      const id = String(raw.id || "").trim();
+      if (!id) return null;
+      const qty = String(raw.qty || "").trim();
+      const name = String(raw.name || raw.text || "").trim();
+      const text = String(raw.text || (qty ? `${qty} ${name}` : name)).trim();
+      const createdAt = Number(raw.createdAt || fallbackTime);
+      const updatedAt = Number(raw.updatedAt || createdAt || fallbackTime);
+      return {
+        id,
+        text,
+        qty,
+        name,
+        category: String(raw.category || "sonstiges"),
+        checked: Boolean(raw.checked),
+        deleted: Boolean(raw.deleted),
+        updatedAt,
+        createdAt
+      };
+    }
+
     try {
-      const cached = JSON.parse(localStorage.getItem(STORAGE_ITEMS_KEY) || "[]");
-      if (Array.isArray(cached)) items = cached;
-    } catch (_) { items = []; }
+      const cachedV4 = JSON.parse(localStorage.getItem(STORAGE_ITEMS_KEY) || "null");
+      if (Array.isArray(cachedV4)) {
+        items = cachedV4.map(it => normalizeItem(it)).filter(Boolean);
+      } else {
+        const cachedV3 = JSON.parse(localStorage.getItem("shopping_items_v3") || "[]");
+        if (Array.isArray(cachedV3)) {
+          items = cachedV3.map(it => normalizeItem(it)).filter(Boolean);
+        }
+      }
+    } catch (_) {
+      items = [];
+    }
 
     function detectCategory(text) {
       const clean = text.toLowerCase().trim();
@@ -388,7 +422,7 @@
 
     function saveLocal() {
       localStorage.setItem(STORAGE_ITEMS_KEY, JSON.stringify(items));
-      localStorage.setItem("shopping_rev_v3", String(localRevision));
+      localStorage.setItem(STORAGE_REV_KEY, String(localRevision));
     }
 
     function setSyncState(state, label) {
@@ -406,31 +440,75 @@
       return (raw || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
     }
 
+    function parseItemsFromFirebase(rawItems) {
+      if (!rawItems) return [];
+      const arr = Array.isArray(rawItems)
+        ? rawItems
+        : (typeof rawItems === "object" ? Object.values(rawItems) : []);
+      return arr.map(it => normalizeItem(it)).filter(Boolean);
+    }
+
+    // Merge two item lists by item.id using per-item updatedAt timestamps.
+    // Preserves items added on one device while another device modified/checked/cleared items offline.
+    function mergeItemLists(localArr, remoteArr) {
+      const map = new Map();
+
+      const addOrMerge = (incoming) => {
+        if (!incoming || !incoming.id) return;
+        const existing = map.get(incoming.id);
+        if (!existing) {
+          map.set(incoming.id, { ...incoming });
+          return;
+        }
+
+        const incTime = Number(incoming.updatedAt || 0);
+        const curTime = Number(existing.updatedAt || 0);
+
+        if (incTime > curTime) {
+          map.set(incoming.id, { ...incoming });
+        } else if (incTime === curTime) {
+          map.set(incoming.id, {
+            ...existing,
+            text: incoming.text || existing.text,
+            qty: incoming.qty || existing.qty,
+            name: incoming.name || existing.name,
+            category: incoming.category || existing.category,
+            checked: existing.checked || incoming.checked,
+            deleted: existing.deleted && incoming.deleted
+          });
+        }
+      };
+
+      (localArr || []).forEach(addOrMerge);
+      (remoteArr || []).forEach(addOrMerge);
+
+      const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+      return Array.from(map.values())
+        .filter(it => !(it.deleted && Number(it.updatedAt || 0) < cutoff))
+        .sort((a, b) => Number(a.createdAt || 0) - Number(b.createdAt || 0));
+    }
+
     function serializeItemsForFirebase(arr) {
-      if (!Array.isArray(arr) || arr.length === 0) return null;
-      return arr.map(it => ({
+      const cleaned = Array.isArray(arr) ? arr.filter(Boolean) : [];
+      if (cleaned.length === 0) return null;
+      return cleaned.map(it => ({
         id: String(it.id || ""),
         text: String(it.text || ""),
         qty: String(it.qty || ""),
         name: String(it.name || it.text || ""),
         category: String(it.category || "sonstiges"),
         checked: Boolean(it.checked),
+        deleted: Boolean(it.deleted),
+        updatedAt: Number(it.updatedAt || Date.now()),
         createdAt: Number(it.createdAt || Date.now())
       }));
     }
 
-    function parseItemsFromFirebase(rawItems) {
-      if (!rawItems) return [];
-      if (Array.isArray(rawItems)) return rawItems.filter(Boolean);
-      if (typeof rawItems === "object") {
-        return Object.values(rawItems).filter(Boolean);
-      }
-      return [];
-    }
-
-    function pushToCloud() {
-      localRevision = Date.now();
+    function pushMergedState(mergedArr, targetRev = null) {
+      items = mergedArr;
+      localRevision = Math.max(Number(localRevision || 0), Number(targetRev || 0), Date.now());
       saveLocal();
+      render();
 
       if (!navigator.onLine) {
         hasPendingSync = true;
@@ -465,6 +543,10 @@
         localStorage.setItem(STORAGE_DIRTY_KEY, "1");
         setSyncState("error", "Sync-Fehler (Regeln/URL prüfen)");
       });
+    }
+
+    function pushToCloud() {
+      pushMergedState(items, Date.now());
     }
 
     async function connectFirebase() {
@@ -506,23 +588,28 @@
 
         onValue(activeRef, (snapshot) => {
           const val = snapshot.val();
+          const remoteItems = (val && typeof val === "object") ? parseItemsFromFirebase(val.items) : [];
+          const remoteRev = (val && typeof val === "object") ? Number(val.updatedAt || 0) : 0;
+
           if (hasPendingSync) {
+            const merged = mergeItemLists(items, remoteItems);
+            items = merged;
+            localRevision = Math.max(localRevision, remoteRev, Date.now());
+            saveLocal();
+            render();
             pushToCloud();
             return;
           }
+
           if (val && typeof val === "object") {
-            const remoteRev = Number(val.updatedAt || 0);
-            const remoteItems = parseItemsFromFirebase(val.items);
-            if (remoteRev >= localRevision) {
-              items = remoteItems;
-              localRevision = remoteRev;
-              saveLocal();
-              render();
-            } else if (items.length === 0 && remoteItems.length > 0 && localRevision > 0) {
-              pushToCloud();
-            }
+            const merged = mergeItemLists(items, remoteItems);
+            items = merged;
+            localRevision = Math.max(localRevision, remoteRev);
+            saveLocal();
+            render();
           } else if (val === null) {
-            if (items.length > 0 && localRevision > 0) {
+            const activeLocal = items.filter(i => !i.deleted);
+            if (activeLocal.length > 0 && localRevision > 0) {
               pushToCloud();
             } else {
               items = [];
@@ -589,14 +676,17 @@
       const combinedText = rawQty ? `${rawQty} ${rawName}` : rawName;
       const chosen = categorySelect.value === "auto" ? detectCategory(rawName) : categorySelect.value;
 
+      const now = Date.now();
       items.push({
-        id: "id_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+        id: "id_" + now + "_" + Math.random().toString(36).slice(2, 6),
         text: combinedText,
         qty: rawQty,
         name: rawName,
         category: chosen,
         checked: false,
-        createdAt: Date.now()
+        deleted: false,
+        updatedAt: now,
+        createdAt: now
       });
 
       qtyInput.value = "";
@@ -636,6 +726,7 @@
       const idx = items.findIndex(i => i.id === id);
       if (idx === -1) return;
       items[idx].checked = !items[idx].checked;
+      items[idx].updatedAt = Date.now();
       render();
       pushToCloud();
     }
@@ -686,6 +777,7 @@
         items[idx].name = newName;
         items[idx].text = newQty ? `${newQty} ${newName}` : newName;
         items[idx].category = editCategorySelect.value;
+        items[idx].updatedAt = Date.now();
         render();
         pushToCloud();
       }
@@ -721,7 +813,8 @@
     document.getElementById("cancelEditBtn").addEventListener("click", closeEdit);
     document.getElementById("deleteItemBtn").addEventListener("click", () => {
       if (!editingItemId) return;
-      items = items.filter(i => i.id !== editingItemId);
+      const now = Date.now();
+      items = items.map(i => i.id === editingItemId ? { ...i, deleted: true, updatedAt: now } : i);
       render();
       pushToCloud();
       closeEdit();
@@ -731,7 +824,8 @@
     document.getElementById("clearCheckedBtn").addEventListener("click", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      items = items.filter(i => !i.checked);
+      const now = Date.now();
+      items = items.map(i => i.checked ? { ...i, deleted: true, updatedAt: now } : i);
       render();
       pushToCloud();
     });
@@ -816,6 +910,7 @@
       const idx = items.findIndex(i => i.id === dragState.itemId);
       if (idx !== -1 && dragState.targetCatId && items[idx].category !== dragState.targetCatId) {
         items[idx].category = dragState.targetCatId;
+        items[idx].updatedAt = Date.now();
         render();
         pushToCloud();
       }
@@ -846,8 +941,9 @@
       container.innerHTML = "";
       checkedList.innerHTML = "";
 
-      const openItems = items.filter(i => !i.checked);
-      const doneItems = items.filter(i => i.checked);
+      const visibleItems = items.filter(i => !i.deleted);
+      const openItems = visibleItems.filter(i => !i.checked);
+      const doneItems = visibleItems.filter(i => i.checked);
 
       emptyState.classList.toggle("hidden", openItems.length > 0);
 
