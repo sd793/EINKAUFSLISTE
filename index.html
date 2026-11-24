@@ -58,12 +58,15 @@
   <main class="max-w-lg mx-auto px-3 pt-4 space-y-4">
 
     <!-- Add Item Card -->
-    <section class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200/80 space-y-2.5">
+    <form id="addForm" novalidate class="bg-white rounded-2xl p-3.5 shadow-sm border border-slate-200/80 space-y-2.5">
       <div class="flex gap-2">
-        <input id="itemInput" type="text" placeholder="Artikel eingeben (z. B. 2x Milch, Äpfel)..."
-          autocomplete="off"
+        <input id="qtyInput" type="text" placeholder="Menge" aria-label="Menge"
+          autocomplete="off" enterkeyhint="next"
+          class="w-20 shrink-0 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white focus:outline-none text-sm font-medium text-center placeholder:text-slate-400" />
+        <input id="itemInput" type="text" placeholder="Artikel (z. B. Milch, Äpfel)..." aria-label="Artikel"
+          autocomplete="off" enterkeyhint="done"
           class="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 focus:border-emerald-500 focus:bg-white focus:outline-none text-sm font-medium placeholder:text-slate-400" />
-        <button id="addBtn" type="button"
+        <button id="addBtn" type="submit" aria-label="Eintrag hinzufügen"
           class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold text-sm flex items-center justify-center shadow-sm transition">
           <i data-lucide="plus" class="w-5 h-5"></i>
         </button>
@@ -79,7 +82,7 @@
           </span>
         </div>
 
-        <select id="categorySelect" aria-label="Kategorie wählen"
+        <select id="categorySelect" tabindex="-1" aria-label="Kategorie wählen"
           class="text-xs font-medium bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 focus:outline-none focus:border-emerald-500 max-w-[175px]">
           <option value="auto">Auto (erkennen)</option>
           <option value="obst_gemuese">1. Obst &amp; Gemüse</option>
@@ -92,7 +95,7 @@
           <option value="sonstiges">8. Sonstiges</option>
         </select>
       </div>
-    </section>
+    </form>
 
     <!-- Open Categories Container -->
     <div id="categoriesContainer" class="space-y-3"></div>
@@ -127,7 +130,7 @@
 
   <!-- Edit Modal -->
   <div id="editModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
-    <div class="bg-white w-full max-w-md rounded-2xl p-4 shadow-xl border border-slate-200 space-y-3.5">
+    <form id="editForm" novalidate class="bg-white w-full max-w-md rounded-2xl p-4 shadow-xl border border-slate-200 space-y-3.5">
       <div class="flex items-center justify-between">
         <h3 class="text-sm font-bold text-slate-900">Eintrag bearbeiten</h3>
         <button id="closeEditModal" type="button" class="p-1 text-slate-400 hover:text-slate-600">
@@ -135,14 +138,21 @@
         </button>
       </div>
       <div class="space-y-2.5">
-        <div>
-          <label class="block text-xs font-semibold text-slate-600 mb-1">Artikel / Menge</label>
-          <input id="editTextInput" type="text"
-            class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-medium" />
+        <div class="flex gap-2">
+          <div class="w-24 shrink-0">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Menge</label>
+            <input id="editQtyInput" type="text" placeholder="z. B. 2x" enterkeyhint="next"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-medium text-center" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">Artikel</label>
+            <input id="editTextInput" type="text" enterkeyhint="done"
+              class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-medium" />
+          </div>
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-600 mb-1">Kategorie</label>
-          <select id="editCategorySelect"
+          <select id="editCategorySelect" tabindex="-1"
             class="w-full px-3 py-2 rounded-xl border border-slate-200 focus:border-emerald-500 focus:outline-none text-sm font-medium bg-white">
             <option value="obst_gemuese">1. Obst &amp; Gemüse</option>
             <option value="kuehlung">2. Kühlung &amp; Molkerei</option>
@@ -166,13 +176,13 @@
             class="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">
             Abbrechen
           </button>
-          <button id="saveEditBtn" type="button"
+          <button id="saveEditBtn" type="submit"
             class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700">
             Speichern
           </button>
         </div>
       </div>
-    </div>
+    </form>
   </div>
 
   <!-- Sync / List-Code Modal -->
@@ -264,10 +274,8 @@
     let firebaseApp = null;
     let db = null;
     let activeRef = null;
-    let isRemoteUpdate = false;
     let editingItemId = null;
 
-    // Load local cache immediately
     try {
       const cached = JSON.parse(localStorage.getItem(STORAGE_ITEMS_KEY) || "[]");
       if (Array.isArray(cached)) items = cached;
@@ -374,7 +382,6 @@
             pushToCloud();
             return;
           }
-          isRemoteUpdate = true;
           if (val && Array.isArray(val.items)) {
             items = val.items;
             saveLocal();
@@ -386,7 +393,6 @@
             saveLocal();
             render();
           }
-          isRemoteUpdate = false;
           setSyncState("online", "Live verbunden");
         }, (error) => {
           console.error("Firebase read error:", error);
@@ -406,7 +412,9 @@
       setSyncState("offline", "Offline-Modus");
     });
 
-    // Live category preview
+    // Inputs & Live Preview
+    const addForm = document.getElementById("addForm");
+    const qtyInput = document.getElementById("qtyInput");
     const itemInput = document.getElementById("itemInput");
     const categorySelect = document.getElementById("categorySelect");
     const previewText = document.getElementById("previewText");
@@ -437,16 +445,24 @@
     categorySelect.addEventListener("change", updatePreview);
 
     function addItem() {
-      const text = itemInput.value.trim();
-      if (!text) return;
-      const chosen = categorySelect.value === "auto" ? detectCategory(text) : categorySelect.value;
+      const rawName = itemInput.value.trim();
+      const rawQty = qtyInput.value.trim();
+      if (!rawName) return;
+
+      const combinedText = rawQty ? `${rawQty} ${rawName}` : rawName;
+      const chosen = categorySelect.value === "auto" ? detectCategory(rawName) : categorySelect.value;
+
       items.push({
         id: "id_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-        text,
+        text: combinedText,
+        qty: rawQty,
+        name: rawName,
         category: chosen,
         checked: false,
         createdAt: Date.now()
       });
+
+      qtyInput.value = "";
       itemInput.value = "";
       categorySelect.value = "auto";
       updatePreview();
@@ -454,12 +470,32 @@
       pushToCloud();
     }
 
-    document.getElementById("addBtn").addEventListener("click", addItem);
-    itemInput.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
+    // Enter in Menge -> springt in Produkt (itemInput)
+    qtyInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.keyCode === 13) {
         e.preventDefault();
+        e.stopPropagation();
+        itemInput.focus();
+      }
+    });
+
+    // Enter in Produkt -> fügt Eintrag direkt hinzu (springt NICHT in Kategorie)
+    itemInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.keyCode === 13) {
+        e.preventDefault();
+        e.stopPropagation();
         addItem();
       }
+    });
+
+    // Fallback: Form-Submit (z. B. mobiler Go/Fertig-Button der Tastatur)
+    addForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (document.activeElement === qtyInput) {
+        itemInput.focus();
+        return;
+      }
+      addItem();
     });
 
     function toggleItemChecked(id) {
@@ -472,14 +508,29 @@
 
     // Edit Modal
     const editModal = document.getElementById("editModal");
+    const editForm = document.getElementById("editForm");
+    const editQtyInput = document.getElementById("editQtyInput");
     const editTextInput = document.getElementById("editTextInput");
     const editCategorySelect = document.getElementById("editCategorySelect");
+
+    function splitQtyAndName(item) {
+      if (typeof item.name === "string" && item.name.length > 0) {
+        return { qty: item.qty || "", name: item.name };
+      }
+      const match = (item.text || "").match(/^(\d+(?:[.,]\d+)?\s*(?:x|kg|g|l|ml|pck|pkg|st|stück|fl|dose|dosen|becher|bund|netz)?)\s+(.+)$/i);
+      if (match) {
+        return { qty: match[1].trim(), name: match[2].trim() };
+      }
+      return { qty: "", name: item.text || "" };
+    }
 
     function openEditModal(id) {
       const item = items.find(i => i.id === id);
       if (!item) return;
       editingItemId = id;
-      editTextInput.value = item.text;
+      const parsed = splitQtyAndName(item);
+      editQtyInput.value = parsed.qty;
+      editTextInput.value = parsed.name;
       editCategorySelect.value = item.category || "sonstiges";
       editModal.classList.remove("hidden");
       setTimeout(() => editTextInput.focus(), 50);
@@ -490,21 +541,50 @@
       editModal.classList.add("hidden");
     }
 
-    document.getElementById("closeEditModal").addEventListener("click", closeEdit);
-    document.getElementById("cancelEditBtn").addEventListener("click", closeEdit);
-    document.getElementById("saveEditBtn").addEventListener("click", () => {
+    function saveEditedItem() {
       if (!editingItemId) return;
-      const newText = editTextInput.value.trim();
-      if (!newText) return;
+      const newName = editTextInput.value.trim();
+      const newQty = editQtyInput.value.trim();
+      if (!newName) return;
       const idx = items.findIndex(i => i.id === editingItemId);
       if (idx !== -1) {
-        items[idx].text = newText;
+        items[idx].qty = newQty;
+        items[idx].name = newName;
+        items[idx].text = newQty ? `${newQty} ${newName}` : newName;
         items[idx].category = editCategorySelect.value;
         render();
         pushToCloud();
       }
       closeEdit();
+    }
+
+    editQtyInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.keyCode === 13) {
+        e.preventDefault();
+        e.stopPropagation();
+        editTextInput.focus();
+      }
     });
+
+    editTextInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.keyCode === 13) {
+        e.preventDefault();
+        e.stopPropagation();
+        saveEditedItem();
+      }
+    });
+
+    editForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      if (document.activeElement === editQtyInput) {
+        editTextInput.focus();
+        return;
+      }
+      saveEditedItem();
+    });
+
+    document.getElementById("closeEditModal").addEventListener("click", closeEdit);
+    document.getElementById("cancelEditBtn").addEventListener("click", closeEdit);
     document.getElementById("deleteItemBtn").addEventListener("click", () => {
       if (!editingItemId) return;
       items = items.filter(i => i.id !== editingItemId);
@@ -663,7 +743,6 @@
           const li = document.createElement("li");
           li.className = "flex items-center gap-2 px-3 py-2.5 bg-white active:bg-slate-50 transition";
 
-          // Drag Handle
           const handle = document.createElement("button");
           handle.type = "button";
           handle.setAttribute("aria-label", "Verschieben");
@@ -675,7 +754,6 @@
             startDrag(item, li, e.clientX, e.clientY);
           });
 
-          // Item Text (Tap to Edit, Long-Press to Drag)
           const textBtn = document.createElement("div");
           textBtn.className = "flex-1 min-w-0 py-0.5 text-sm font-medium text-slate-800 cursor-pointer break-words";
           textBtn.textContent = item.text;
@@ -723,7 +801,6 @@
             }
           });
 
-          // Check Button
           const checkBtn = document.createElement("button");
           checkBtn.type = "button";
           checkBtn.setAttribute("aria-label", "Abhaken");
@@ -744,7 +821,6 @@
         container.appendChild(card);
       });
 
-      // Render Checked Items
       if (doneItems.length > 0) {
         checkedSection.classList.remove("hidden");
         checkedCount.textContent = String(doneItems.length);
