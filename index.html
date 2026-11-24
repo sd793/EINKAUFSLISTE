@@ -47,11 +47,17 @@
         </div>
       </div>
 
-      <button id="openSyncBtn" type="button"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-xs font-semibold text-slate-700 border border-slate-200 transition">
-        <i data-lucide="key-round" class="w-3.5 h-3.5 text-emerald-600"></i>
-        <span id="activeCodeBadge">Code</span>
-      </button>
+      <div class="flex items-center gap-1.5">
+        <button id="openHelpBtn" type="button" aria-label="Kurzanleitung öffnen" title="Kurzanleitung"
+          class="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-700 border border-slate-200 flex items-center justify-center transition">
+          <i data-lucide="help-circle" class="w-4 h-4 text-emerald-600"></i>
+        </button>
+        <button id="openSyncBtn" type="button"
+          class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-xs font-semibold text-slate-700 border border-slate-200 transition">
+          <i data-lucide="key-round" class="w-3.5 h-3.5 text-emerald-600"></i>
+          <span id="activeCodeBadge">Code</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -235,6 +241,57 @@
     </div>
   </div>
 
+  <!-- Quick Help Modal -->
+  <div id="helpModal" class="hidden fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-end sm:items-center justify-center p-3">
+    <div class="bg-white w-full max-w-md rounded-2xl p-4 shadow-xl border border-slate-200 space-y-3 max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-2.5">
+        <div class="flex items-center gap-2">
+          <span class="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+          </span>
+          <h3 class="text-sm font-bold text-slate-900">Kurzanleitung</h3>
+        </div>
+        <button id="closeHelpModal" type="button" aria-label="Anleitung schließen" class="p-1 text-slate-400 hover:text-slate-600">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="space-y-2.5 text-xs text-slate-600 leading-relaxed">
+        <div>
+          <p class="font-bold text-slate-800">1. Artikel hinzufügen</p>
+          <p>Menge (optional) und Artikel eintippen. Mit <strong>Enter</strong> springst du ins Artikelfeld und fügst den Eintrag hinzu. Die Kategorie wird automatisch erkannt oder manuell gewählt.</p>
+        </div>
+        <div>
+          <p class="font-bold text-slate-800">2. Abhaken, Zurücklegen &amp; Leeren</p>
+          <p>Mit dem Haken rechts wandert ein Artikel in <em>Bereits im Einkaufswagen</em>. Über den Pfeil holst du ihn zurück, mit <strong>Leeren</strong> entfernst du abgehakte Punkte.</p>
+        </div>
+        <div>
+          <p class="font-bold text-slate-800">3. Bearbeiten &amp; Löschen</p>
+          <p>Kurz auf einen Artikel tippen, um Menge, Name oder Kategorie zu ändern oder den Eintrag zu löschen.</p>
+        </div>
+        <div>
+          <p class="font-bold text-slate-800">4. Verschieben per Ziehen</p>
+          <p>Den Griff links gedrückt halten (oder kurz länger auf den Artikel drücken) und in eine andere Kategorie ziehen.</p>
+        </div>
+        <div>
+          <p class="font-bold text-slate-800">5. Automatisch lernen</p>
+          <p>Wählst du beim Hinzufügen oder Bearbeiten eine Kategorie, merkt sich die Liste den Begriff für alle Geräte mit demselben Code.</p>
+        </div>
+        <div>
+          <p class="font-bold text-slate-800">6. Live-Sync &amp; Offline-Nutzung</p>
+          <p>Oben über <strong>Code</strong> den gemeinsamen Listen-Code prüfen. Änderungen funktionieren auch offline und gleicht die App automatisch ab, sobald wieder Netz da ist.</p>
+        </div>
+      </div>
+
+      <div class="flex justify-end pt-1">
+        <button id="okHelpBtn" type="button"
+          class="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700">
+          Verstanden
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Inline Service Worker Registration for Offline Page Opening -->
   <script>
     (function registerOfflineServiceWorker() {
@@ -374,14 +431,50 @@
     const STORAGE_REV_KEY = "shopping_rev_v4";
     const STORAGE_LEARNED_KEY = "shopping_learned_categories_v1";
 
+    const VALID_CATEGORY_IDS = new Set([
+      "obst_gemuese",
+      "brot_beilagen",
+      "fleisch",
+      "molkerei_kuehlung",
+      "konserven_gewuerze",
+      "drogerie_haushalt",
+      "getraenke",
+      "tiefkuehlung",
+      "sonstiges"
+    ]);
+
+    function sanitizeLearnedMap(rawMap) {
+      const out = {};
+      if (!rawMap || typeof rawMap !== "object") return out;
+      for (const [k, v] of Object.entries(rawMap)) {
+        const key = String(k || "").toLowerCase().trim().replace(/\s+/g, " ");
+        const catId = String(v || "").trim();
+        if (key && key.length >= 2 && VALID_CATEGORY_IDS.has(catId)) {
+          out[key] = catId;
+        }
+      }
+      return out;
+    }
+
     let learnedCategories = {};
     try {
       const parsedLearned = JSON.parse(localStorage.getItem(STORAGE_LEARNED_KEY) || "{}");
-      if (parsedLearned && typeof parsedLearned === "object") {
-        learnedCategories = parsedLearned;
-      }
+      learnedCategories = sanitizeLearnedMap(parsedLearned);
     } catch (_) {
       learnedCategories = {};
+    }
+
+    function saveLearnedLocal() {
+      localStorage.setItem(STORAGE_LEARNED_KEY, JSON.stringify(learnedCategories));
+    }
+
+    function mergeLearnedMaps(localMap, remoteMap) {
+      const cleanLocal = sanitizeLearnedMap(localMap);
+      const cleanRemote = sanitizeLearnedMap(remoteMap);
+      return {
+        ...cleanLocal,
+        ...cleanRemote
+      };
     }
 
     function extractLearnKey(rawName) {
@@ -397,7 +490,7 @@
     }
 
     function learnCategoryMapping(rawName, catId) {
-      if (!catId || catId === "auto") return;
+      if (!catId || catId === "auto" || !VALID_CATEGORY_IDS.has(catId)) return;
       const fullPhrase = (rawName || "").toLowerCase().trim().replace(/\s+/g, " ");
       const keyWord = extractLearnKey(rawName);
       if (keyWord) {
@@ -406,7 +499,7 @@
       if (fullPhrase && fullPhrase.length >= 2) {
         learnedCategories[fullPhrase] = catId;
       }
-      localStorage.setItem(STORAGE_LEARNED_KEY, JSON.stringify(learnedCategories));
+      saveLearnedLocal();
     }
 
     const DEFAULT_PROJECT_ID = "einkaufsliste-4394a";
@@ -495,6 +588,7 @@
     function saveLocal() {
       localStorage.setItem(STORAGE_ITEMS_KEY, JSON.stringify(items));
       localStorage.setItem(STORAGE_REV_KEY, String(localRevision));
+      saveLearnedLocal();
     }
 
     function setSyncState(state, label) {
@@ -576,6 +670,11 @@
       }));
     }
 
+    function serializeLearnedForFirebase(mapObj) {
+      const clean = sanitizeLearnedMap(mapObj);
+      return Object.keys(clean).length > 0 ? clean : null;
+    }
+
     function pushMergedState(mergedArr, targetRev = null) {
       items = mergedArr;
       localRevision = Math.max(Number(localRevision || 0), Number(targetRev || 0), Date.now());
@@ -602,6 +701,7 @@
 
       const payload = {
         items: serializeItemsForFirebase(items),
+        learnedCategories: serializeLearnedForFirebase(learnedCategories),
         updatedAt: localRevision
       };
 
@@ -667,6 +767,13 @@
           const val = snapshot.val();
           const remoteItems = (val && typeof val === "object") ? parseItemsFromFirebase(val.items) : [];
           const remoteRev = (val && typeof val === "object") ? Number(val.updatedAt || 0) : 0;
+          const remoteLearned = (val && typeof val === "object") ? sanitizeLearnedMap(val.learnedCategories) : {};
+
+          if (Object.keys(remoteLearned).length > 0 || Object.keys(learnedCategories).length > 0) {
+            learnedCategories = mergeLearnedMaps(learnedCategories, remoteLearned);
+            saveLearnedLocal();
+            updatePreview();
+          }
 
           if (hasPendingSync) {
             const merged = mergeItemLists(items, remoteItems);
@@ -678,6 +785,7 @@
             localStorage.removeItem(STORAGE_DIRTY_KEY);
             set(activeRef, {
               items: serializeItemsForFirebase(items),
+              learnedCategories: serializeLearnedForFirebase(learnedCategories),
               updatedAt: localRevision
             }).then(() => {
               setSyncState("online", "Live verbunden");
@@ -696,7 +804,7 @@
             render();
           } else if (val === null) {
             const activeLocal = items.filter(i => !i.deleted);
-            if (activeLocal.length > 0 && localRevision > 0) {
+            if ((activeLocal.length > 0 && localRevision > 0) || Object.keys(learnedCategories).length > 0) {
               pushToCloud();
               return;
             }
@@ -1177,6 +1285,21 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[m]));
     }
+
+    const helpModal = document.getElementById("helpModal");
+    function openHelp() {
+      helpModal.classList.remove("hidden");
+      if (window.lucide) lucide.createIcons({ root: helpModal });
+    }
+    function closeHelp() {
+      helpModal.classList.add("hidden");
+    }
+    document.getElementById("openHelpBtn").addEventListener("click", openHelp);
+    document.getElementById("closeHelpModal").addEventListener("click", closeHelp);
+    document.getElementById("okHelpBtn").addEventListener("click", closeHelp);
+    helpModal.addEventListener("click", (e) => {
+      if (e.target === helpModal) closeHelp();
+    });
 
     render();
     connectFirebase();
