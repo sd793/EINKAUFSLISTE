@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <meta name="theme-color" content="#059669" />
-<title>Einkaufsliste</title>
+  <title>Einkaufsliste</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <style>
@@ -292,7 +292,7 @@
     </div>
   </div>
 
-<!-- Inline Service Worker Registration for Offline Page Opening -->
+  <!-- Inline Service Worker Registration for Offline Page Opening -->
   <script>
     (function registerOfflineServiceWorker() {
       if (!("serviceWorker" in navigator)) return;
@@ -431,6 +431,45 @@
     const STORAGE_REV_KEY = "shopping_rev_v4";
     const STORAGE_LEARNED_KEY = "shopping_learned_categories_v1";
 
+    function safeGetStorage(key) {
+      try {
+        return localStorage.getItem(key);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function safeSetStorage(key, value) {
+      try {
+        if (value === null || value === undefined) {
+          localStorage.removeItem(key);
+        } else {
+          localStorage.setItem(key, String(value));
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function readWindowBackup() {
+      try {
+        if (!window.name || !window.name.startsWith("{")) return {};
+        const parsed = JSON.parse(window.name);
+        return (parsed && typeof parsed === "object") ? parsed : {};
+      } catch (_) {
+        return {};
+      }
+    }
+
+    function writeWindowBackup(patch) {
+      try {
+        const current = readWindowBackup();
+        const next = { ...current, ...patch };
+        window.name = JSON.stringify(next);
+      } catch (_) {}
+    }
+
     const VALID_CATEGORY_IDS = new Set([
       "obst_gemuese",
       "brot_beilagen",
@@ -458,14 +497,14 @@
 
     let learnedCategories = {};
     try {
-      const parsedLearned = JSON.parse(localStorage.getItem(STORAGE_LEARNED_KEY) || "{}");
+      const parsedLearned = JSON.parse(safeGetStorage(STORAGE_LEARNED_KEY) || "{}");
       learnedCategories = sanitizeLearnedMap(parsedLearned);
     } catch (_) {
       learnedCategories = {};
     }
 
     function saveLearnedLocal() {
-      localStorage.setItem(STORAGE_LEARNED_KEY, JSON.stringify(learnedCategories));
+      safeSetStorage(STORAGE_LEARNED_KEY, JSON.stringify(learnedCategories));
     }
 
     function mergeLearnedMaps(localMap, remoteMap) {
@@ -505,13 +544,47 @@
     const DEFAULT_PROJECT_ID = "einkaufsliste-4394a";
     const DEFAULT_DB_URL = "https://einkaufsliste-4394a-default-rtdb.europe-west1.firebasedatabase.app";
 
+    function getCodeFromUrl() {
+      try {
+        const params = new URLSearchParams(window.location.search || "");
+        const qCode = params.get("code") || params.get("list") || "";
+        if (qCode) return qCode;
+        const hash = (window.location.hash || "").replace(/^#/, "");
+        if (hash) {
+          const hParams = new URLSearchParams(hash.includes("=") ? hash : "code=" + encodeURIComponent(hash));
+          return hParams.get("code") || hParams.get("list") || "";
+        }
+      } catch (_) {}
+      return "";
+    }
+
+    function persistListCode(codeVal) {
+      const cleaned = (codeVal || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+      if (!cleaned) return;
+      safeSetStorage(STORAGE_CODE_KEY, cleaned);
+      writeWindowBackup({ listCode: cleaned });
+    }
+
+    function persistDbUrl(urlVal) {
+      const cleaned = (urlVal || "").trim();
+      safeSetStorage(STORAGE_DBURL_KEY, cleaned);
+      writeWindowBackup({ dbUrl: cleaned });
+    }
+
     // Each item has:
     // { id, text, qty, name, category, checked, deleted, updatedAt, createdAt }
     let items = [];
-    let listCode = localStorage.getItem(STORAGE_CODE_KEY) || "familie-einkauf-2026";
-    let dbUrl = localStorage.getItem(STORAGE_DBURL_KEY) || DEFAULT_DB_URL;
-    let hasPendingSync = localStorage.getItem(STORAGE_DIRTY_KEY) === "1";
-    let localRevision = Number(localStorage.getItem(STORAGE_REV_KEY) || "0");
+    const winBackup = readWindowBackup();
+    const urlCodeRaw = getCodeFromUrl().trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    const storedCodeRaw = (safeGetStorage(STORAGE_CODE_KEY) || winBackup.listCode || "").trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    let listCode = urlCodeRaw || storedCodeRaw || "familie-einkauf-2026";
+    persistListCode(listCode);
+
+    let dbUrl = safeGetStorage(STORAGE_DBURL_KEY) || winBackup.dbUrl || DEFAULT_DB_URL;
+    persistDbUrl(dbUrl);
+
+    let hasPendingSync = safeGetStorage(STORAGE_DIRTY_KEY) === "1";
+    let localRevision = Number(safeGetStorage(STORAGE_REV_KEY) || "0");
 
     let firebaseApp = null;
     let db = null;
@@ -541,11 +614,11 @@
     }
 
     try {
-      const cachedV4 = JSON.parse(localStorage.getItem(STORAGE_ITEMS_KEY) || "null");
+      const cachedV4 = JSON.parse(safeGetStorage(STORAGE_ITEMS_KEY) || "null");
       if (Array.isArray(cachedV4)) {
         items = cachedV4.map(it => normalizeItem(it)).filter(Boolean);
       } else {
-        const cachedV3 = JSON.parse(localStorage.getItem("shopping_items_v3") || "[]");
+        const cachedV3 = JSON.parse(safeGetStorage("shopping_items_v3") || "[]");
         if (Array.isArray(cachedV3)) {
           items = cachedV3.map(it => normalizeItem(it)).filter(Boolean);
         }
@@ -586,8 +659,8 @@
     }
 
     function saveLocal() {
-      localStorage.setItem(STORAGE_ITEMS_KEY, JSON.stringify(items));
-      localStorage.setItem(STORAGE_REV_KEY, String(localRevision));
+      safeSetStorage(STORAGE_ITEMS_KEY, JSON.stringify(items));
+      safeSetStorage(STORAGE_REV_KEY, String(localRevision));
       saveLearnedLocal();
     }
 
@@ -614,8 +687,6 @@
       return arr.map(it => normalizeItem(it)).filter(Boolean);
     }
 
-    // Merge two item lists by item.id using per-item updatedAt timestamps.
-    // Preserves items added on one device while another device modified/checked/cleared items offline.
     function mergeItemLists(localArr, remoteArr) {
       const map = new Map();
 
@@ -683,20 +754,20 @@
 
       if (!navigator.onLine) {
         hasPendingSync = true;
-        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+        safeSetStorage(STORAGE_DIRTY_KEY, "1");
         setSyncState("offline", "Offline (gespeichert)");
         return;
       }
 
       if (!db || !activeRef) {
         hasPendingSync = true;
-        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+        safeSetStorage(STORAGE_DIRTY_KEY, "1");
         connectFirebase();
         return;
       }
 
       hasPendingSync = true;
-      localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+      safeSetStorage(STORAGE_DIRTY_KEY, "1");
       setSyncState("syncing", "Synchronisiere...");
 
       const payload = {
@@ -707,12 +778,12 @@
 
       set(activeRef, payload).then(() => {
         hasPendingSync = false;
-        localStorage.removeItem(STORAGE_DIRTY_KEY);
+        safeSetStorage(STORAGE_DIRTY_KEY, null);
         setSyncState("online", "Live verbunden");
       }).catch((err) => {
         console.error("Firebase write error:", err);
         hasPendingSync = true;
-        localStorage.setItem(STORAGE_DIRTY_KEY, "1");
+        safeSetStorage(STORAGE_DIRTY_KEY, "1");
         setSyncState("error", "Sync-Fehler (Regeln/URL prüfen)");
       });
     }
@@ -730,7 +801,7 @@
       try {
         const safeCode = sanitizeCode(listCode) || "familie-einkauf-2026";
         listCode = safeCode;
-        localStorage.setItem(STORAGE_CODE_KEY, listCode);
+        persistListCode(listCode);
         document.getElementById("activeCodeBadge").textContent =
           listCode.length > 12 ? listCode.slice(0, 10) + "…" : listCode;
 
@@ -782,7 +853,7 @@
             saveLocal();
             render();
             hasPendingSync = false;
-            localStorage.removeItem(STORAGE_DIRTY_KEY);
+            safeSetStorage(STORAGE_DIRTY_KEY, null);
             set(activeRef, {
               items: serializeItemsForFirebase(items),
               learnedCategories: serializeLearnedForFirebase(learnedCategories),
@@ -1051,10 +1122,16 @@
     document.getElementById("saveSyncBtn").addEventListener("click", () => {
       const newCode = sanitizeCode(listCodeInput.value);
       const newUrl = dbUrlInput.value.trim();
-      if (newCode) listCode = newCode;
-      dbUrl = newUrl;
-      localStorage.setItem(STORAGE_CODE_KEY, listCode);
-      localStorage.setItem(STORAGE_DBURL_KEY, dbUrl);
+      if (newCode) {
+        listCode = newCode;
+      } else if (!listCode) {
+        listCode = "familie-einkauf-2026";
+      }
+      if (newUrl) {
+        dbUrl = newUrl;
+      }
+      persistListCode(listCode);
+      persistDbUrl(dbUrl);
       syncModal.classList.add("hidden");
       connectFirebase();
     });
